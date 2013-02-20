@@ -3,30 +3,41 @@
 
 #include <time.h>
 
-// shm_key repozytorium
+#include <limits.h>
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <sys/msg.h>
+
+#include <signal.h>
+
 #define ID_REPO 80085
 
-// sem_key semafora dla repozytorium
 #define SEM_REPO 80666
 
-// sem_key semafora dla pliku logu
 #define SEM_LOG 80777
 
-// Wspólna kolejka dla serwerów, tutaj podpinają się klienci w celu wysłania żądania o listę serwerów
 #define SERVER_LIST_MSG_KEY 8168008
 
 #define MAX_SERVER_NUM 20
 
-// max liczba klientów na serwerze
 #define SERVER_CAPACITY 20
 #define MAX_CLIENTS MAX_SERVER_NUM*SERVER_CAPACITY
 #define MAX_NAME_SIZE 20
 #define MAX_MSG_SIZE 1024
 
-// maksymalny czas reakcji serwera w sekundach
 #define TIMEOUT 5
 
-// Typy komunikatów
+#define LOG(x) printf(x"\n");
+
 typedef enum MSG_TYPE {
   SERVER_LIST = 1,
   ROOM_LIST,
@@ -52,14 +63,11 @@ typedef struct ROOM {
 } ROOM;
 
 typedef struct SERVER {
-  int client_msgid; // id - kolejki komunikatów do komunikacji z klientami
-  int server_msgid; // id - kolejki komunikatów do komunikacji między serwerami
-  int clients; // obciążenie
+  int client_msgid;
+  int server_msgid;
+  int clients;
 } SERVER;
 
-/**
- * Struktury komunikatów
- */
 typedef struct SERVER_LIST_REQUEST {
   long type;
   int client_msgid;
@@ -115,9 +123,32 @@ typedef struct REPO {
   CLIENT clients[MAX_CLIENTS];
   ROOM rooms[MAX_CLIENTS];
   SERVER servers[MAX_SERVER_NUM];
-  int active_clients
-  int active_rooms
+  int active_clients;
+  int active_rooms;
   int active_servers;
 } REPO;
+
+int REPO_SEMAPHORE_ID;
+int LOG_SEMAPHORE_ID;
+int REPO_SHM_ID;
+int SHARED_QUEUE_ID;
+REPO * GLOBAL_REPO;
+
+void init();
+void init_repository();
+
+void cleanup();
+
+void semaphore_set(int i, int v);
+void semaphore_up(int i);
+void semaphore_down(int i);
+
+void repository_lock();
+void repository_unlock();
+
+void repository_sort_servers();
+
+void repository_server_add(SERVER desc);
+void repository_server_remove(int id);
 
 #endif
