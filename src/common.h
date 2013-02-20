@@ -4,7 +4,8 @@
 #include <time.h>
 
 #include <limits.h>
-
+#include <string.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -36,7 +37,7 @@
 
 #define TIMEOUT 5
 
-#define LOG(x) printf(x"\n");
+#define LOG_FILE "/tmp/czat.log"
 
 typedef enum MSG_TYPE {
   SERVER_LIST = 1,
@@ -121,7 +122,7 @@ typedef struct TEXT_MESSAGE {
 
 typedef struct REPO {
   CLIENT clients[MAX_CLIENTS];
-  ROOM rooms[MAX_CLIENTS];
+  ROOM rooms[20];
   SERVER servers[MAX_SERVER_NUM];
   int active_clients;
   int active_rooms;
@@ -143,12 +144,25 @@ void semaphore_set(int i, int v);
 void semaphore_up(int i);
 void semaphore_down(int i);
 
+void log_write(const char* data, ...);
+
 void repository_lock();
 void repository_unlock();
 
 void repository_sort_servers();
+void repository_sort_rooms();
+void repository_sort_clients();
 
 void repository_server_add(SERVER desc);
 void repository_server_remove(int id);
 
+void repository_room_add(ROOM desc);
+void repository_room_remove(char * name);
+
+void repository_client_add(CLIENT desc);
+void repository_client_remove(char * name);
+
+void receive_and_handle(int queue, MSG_TYPE type, void (*handler) (const void *));
+
 #endif
+
