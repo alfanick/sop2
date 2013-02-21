@@ -40,9 +40,8 @@ repository_lock();
   GLOBAL_REPO = shmat(REPO_SHM_ID, NULL, 0);
 
   if (b) {
-    printf("czysty\n");
     GLOBAL_REPO->active_clients = 0;
-    GLOBAL_REPO->active_rooms = 1;
+    GLOBAL_REPO->active_rooms = 0;
 
     int i;
     for (i = 0; i < 20; i++) {

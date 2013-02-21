@@ -13,6 +13,8 @@ void loop();
 
 void change_room(char* name, char* room);
 
+void logout_user(char* name);
+
 void response_status(int queue, int status);
 
 void handle_server_list(const void *);
@@ -26,6 +28,12 @@ void handle_private(const void *);
 void handle_public(const void *);
 void handle_private_server(const void *);
 void handle_public_server(const void *);
+
+void handle_heartbeat(const void *);
+void init_heartbeats();
+void check_heartbeats();
+int heartbeat_delay[MAX_CLIENTS];
+
 
 int main(int argc, char* argv[]) {
   init();
@@ -50,6 +58,7 @@ void quit_handler(int i) {
 }
 
 void loop() {
+  time_t start = time(0);
   while (1) {
     receive_and_handle(SHARED_QUEUE_ID,           SERVER_LIST,  handle_server_list);
 
@@ -64,6 +73,14 @@ void loop() {
 
     receive_and_handle(SERVER_DESC.server_msgid,  PRIVATE,      handle_private_server);
     receive_and_handle(SERVER_DESC.server_msgid,  PUBLIC,       handle_public_server);
+
+    receive_and_handle(SERVER_DESC.client_msgid,  HEARTBEAT,    handle_heartbeat);
+
+    if (start - time(0) > 1) {
+      start = time(0);
+
+      check_heartbeats();
+    }
   }
 }
 
@@ -84,6 +101,8 @@ repository_lock();
   repository_server_add(SERVER_DESC);
 
 repository_unlock();
+
+  init_heartbeats();
 
   log_write("ALIVE: %d\n", SERVER_DESC.server_msgid);
 }
@@ -186,26 +205,35 @@ void handle_room_list(const void * req) {
   CLIENT_REQUEST * cr = (CLIENT_REQUEST*) req;
 
 repository_lock();
-printf("dostalem!\n");
+
   ROOM_LIST_RESPONSE res;
   res.type = ROOM_LIST;
   res.active_rooms = GLOBAL_REPO->active_rooms;
-  //memcpy(res.rooms, GLOBAL_REPO->rooms, sizeof(ROOM) * GLOBAL_REPO->active_rooms);
-int i;
-  for (i = 0; i < GLOBAL_REPO->active_rooms; i++) {
-    strcpy(res.rooms[i].name, GLOBAL_REPO->rooms[i].name);
-    res.rooms[i].clients = GLOBAL_REPO->rooms[i].clients;
-  }
+  memcpy(res.rooms, GLOBAL_REPO->rooms, sizeof(GLOBAL_REPO->rooms));
 
   msgsnd(cr->client_msgid, &res, sizeof(res)-sizeof(long), 0);
-
-printf("odsylam!\n");
 
 repository_unlock();
 
 }
 
 void handle_client_list(const void * req) {
+  CLIENT_REQUEST * cr = (CLIENT_REQUEST*) req;
+  int i;
+
+repository_lock();
+
+  CLIENT_LIST_RESPONSE res;
+  res.type = CLIENT_LIST;
+  res.active_clients = GLOBAL_REPO->active_clients;
+
+  for (i = 0; i < MAX_CLIENTS; i++) {
+    strcpy(res.names[i], GLOBAL_REPO->clients[i].name);
+  }
+
+  msgsnd(cr->client_msgid, &res, sizeof(res)-sizeof(long), 0);
+
+repository_unlock();
 
 }
 
@@ -247,26 +275,34 @@ repository_lock();
 
 repository_unlock();
 
+  init_heartbeats();
+
   if (ok)
     log_write("LOGGED_IN@%d: %s\n", SERVER_DESC.server_msgid, cr->client_name);
+}
+
+void logout_user(char * name) {
+
+repository_lock();
+
+  change_room(name, "");
+
+  GLOBAL_REPO->rooms[0].clients--;
+
+  repository_client_remove(name);
+
+repository_unlock();
+
+  log_write("LOGGED_OUT@%d: %s\n", SERVER_DESC.server_msgid, name);
+
 }
 
 void handle_logout(const void * req) {
   CLIENT_REQUEST * cr = (CLIENT_REQUEST*) req;
 
-  int i;
+  logout_user(cr->client_name);
 
-repository_lock();
-
-  change_room(cr->client_name, "");
-
-  GLOBAL_REPO->rooms[0].clients--;
-
-  repository_client_remove(cr->client_name);
-
-repository_unlock();
-
-  log_write("LOGGED_OUT@%d: %s\n", SERVER_DESC.server_msgid, cr->client_name);
+  init_heartbeats();
 }
 
 void handle_status(const void * req) {
@@ -301,3 +337,55 @@ void handle_private_server(const void * req) {
 void handle_public_server(const void * req) {
 
 }
+
+void handle_heartbeat(const void * req) {
+/*  CLIENT_REQUEST* cr = (CLIENT_REQUEST*)req;
+
+  int i;
+
+repository_lock();
+
+  for (i = 0; i < GLOBAL_REPO->active_clients; i++) {
+    if (strcmp(cr->client_name, GLOBAL_REPO->clients[i].name)==0) {
+      heartbeat_delay[i] = TIMEOUT;
+    }
+  }
+
+repository_unlock();
+*/}
+
+void check_heartbeats() {
+/*  int i;
+  STATUS_RESPONSE res;
+  res.type = HEARTBEAT;
+  res.status = SERVER_DESC.client_msgid;
+repository_lock();
+
+  for (i = 0; i < GLOBAL_REPO->active_clients; i++) {
+    if (GLOBAL_REPO->clients[i].server_id == SERVER_DESC.server_msgid) {
+      if ((--heartbeat_delay[i]) == 0) {
+        logout_user(GLOBAL_REPO->clients[i].name);
+      } else {
+        msgsnd(GLOBAL_REPO->clients[i].)
+      }
+    }
+  }
+
+repository_unlock();
+*/}
+
+void init_heartbeats() {
+/*repository_lock();
+
+  int i;
+
+  for (i = 0; i < MAX_CLIENTS; i++) {
+    if (i < GLOBAL_REPO->active_clients) {
+      heartbeat_delay[i] = TIMEOUT;
+    } else {
+      heartbeat_delay[i] = INT_MAX;
+    }
+  }
+
+repository_unlock();
+*/}

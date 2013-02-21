@@ -28,7 +28,7 @@
 
 #define SERVER_LIST_MSG_KEY 8168008
 
-#define MAX_SERVER_NUM 20
+#define MAX_SERVER_NUM 3
 
 #define SERVER_CAPACITY 20
 #define MAX_CLIENTS MAX_SERVER_NUM*SERVER_CAPACITY
@@ -90,7 +90,7 @@ typedef struct ROOM_LIST_RESPONSE {
 typedef struct CLIENT_LIST_RESPONSE {
   long type;
   int active_clients;
-  char names[MAX_NAME_SIZE][MAX_CLIENTS];
+  char names[MAX_CLIENTS][MAX_NAME_SIZE];
 } CLIENT_LIST_RESPONSE;
 
 typedef struct CLIENT_REQUEST {
@@ -122,7 +122,7 @@ typedef struct TEXT_MESSAGE {
 
 typedef struct REPO {
   CLIENT clients[MAX_CLIENTS];
-  ROOM rooms[20];
+  ROOM rooms[MAX_CLIENTS];
   SERVER servers[MAX_SERVER_NUM];
   int active_clients;
   int active_rooms;

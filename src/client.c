@@ -18,6 +18,8 @@ int await_status(MSG_TYPE type);
 void send_request(int queue, MSG_TYPE type);
 int send_request_with_status(int queue, MSG_TYPE type);
 
+void handle_heartbeat(const void *);
+
 CLIENT CLIENT_DESC;
 SERVER_LIST_RESPONSE SERVERS;
 int CLIENT_QUEUE;
@@ -52,9 +54,19 @@ void output_loop() {
   while (OUTPUT_ALIVE) {
     sleep(1);
 
+    receive_and_handle(CLIENT_QUEUE, HEARTBEAT, handle_heartbeat);
+
     //printf("output1\n");
   }
 
+}
+
+void handle_heartbeat(const void * req) {
+  STATUS_RESPONSE * res = (STATUS_RESPONSE*) req;
+
+  printf("pingpong!\n");
+  if (res->status == CLIENT_DESC.server_id)
+    send_request(res->status, HEARTBEAT);
 }
 
 void input_loop() {
@@ -83,22 +95,33 @@ void input_loop() {
 
     } else
     if (cmd == ROOM_LIST) {
-      printf("wysylam\n");
 
       send_request(CLIENT_DESC.server_id, ROOM_LIST);
-printf("wyszlo\n");
-      ROOM_LIST_RESPONSE res;
 
-      msgrcv(CLIENT_QUEUE, &res, sizeof(res) - sizeof(long), ROOM_LIST, IPC_NOWAIT);
+      ROOM_LIST_RESPONSE res;
+      msgrcv(CLIENT_QUEUE, &res, sizeof(res) - sizeof(long), ROOM_LIST, 0);
 
       int i;
       printf("Available rooms:\n");
-      for (i = 0; i < GLOBAL_REPO->active_rooms; i++) {
-        printf("  - %s (%d)\n", res.rooms[i].name, res.rooms[i].clients);
+      for (i = 0; i < res.active_rooms; i++) {
+        if (res.rooms[i].clients > 0) {
+          printf("  - %s (%d)\n", res.rooms[i].name, res.rooms[i].clients);
+        }
       }
 
     } else
     if (cmd == CLIENT_LIST) {
+
+      send_request(CLIENT_DESC.server_id, CLIENT_LIST);
+
+      CLIENT_LIST_RESPONSE res;
+      msgrcv(CLIENT_QUEUE, &res, sizeof(res) - sizeof(long), CLIENT_LIST, 0);
+
+      int i;
+      printf("Available clients:\n");
+      for (i = 0; i < res.active_clients; i++) {
+        printf("  - %s\n", res.names[i]);
+      }
 
     } else
     if (cmd == PUBLIC) {
@@ -116,15 +139,6 @@ printf("wyszlo\n");
     } else {
       printf("!!! Unknown command\n");
     }
-/*
-    if (line[0] == 'q') {
-      OUTPUT_ALIVE = 0;
-
-      kill(OUTPUT_PID, SIGKILL);
-
-      break;
-    }
-*/
   }
 
   free(line);
