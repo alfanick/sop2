@@ -30,10 +30,16 @@ void handle_private_server(const void *);
 void handle_public_server(const void *);
 
 void handle_heartbeat(const void *);
-void init_heartbeats();
 void check_heartbeats();
-int heartbeat_delay[MAX_CLIENTS];
 
+
+CLIENT_REL LOCAL_CLIENTS[SERVER_CAPACITY];
+void init_local_clients();
+void local_client_add(CLIENT desc, int msgid);
+void local_client_remove(char * name);
+void local_client_set_time(int i, int t);
+int local_client_tick_time(int i);
+void local_client_room_change(char * name, char * room);
 
 int main(int argc, char* argv[]) {
   init();
@@ -58,7 +64,7 @@ void quit_handler(int i) {
 }
 
 void loop() {
-  time_t start = time(0);
+  time_t start = time(NULL);
   while (1) {
     receive_and_handle(SHARED_QUEUE_ID,           SERVER_LIST,  handle_server_list);
 
@@ -76,8 +82,9 @@ void loop() {
 
     receive_and_handle(SERVER_DESC.client_msgid,  HEARTBEAT,    handle_heartbeat);
 
-    if (start - time(0) > 1) {
-      start = time(0);
+    if (time(NULL)-start > 1) {
+      start = time(NULL);
+      printf("sekunda\n");
 
       check_heartbeats();
     }
@@ -96,13 +103,13 @@ void init_server() {
     SERVER_DESC.server_msgid = msgget(rand() % 10000000 + 1000, 0666 | IPC_CREAT | IPC_EXCL);
   } while (SERVER_DESC.server_msgid == -1);
 
+  init_local_clients();
+
 repository_lock();
 
   repository_server_add(SERVER_DESC);
 
 repository_unlock();
-
-  init_heartbeats();
 
   log_write("ALIVE: %d\n", SERVER_DESC.server_msgid);
 }
@@ -265,6 +272,7 @@ repository_lock();
     desc.server_id = SERVER_DESC.server_msgid;
 
     repository_client_add(desc);
+    local_client_add(desc, cr->client_msgid);
 
     SERVER_DESC.clients++;
 
@@ -274,8 +282,6 @@ repository_lock();
   }
 
 repository_unlock();
-
-  init_heartbeats();
 
   if (ok)
     log_write("LOGGED_IN@%d: %s\n", SERVER_DESC.server_msgid, cr->client_name);
@@ -291,6 +297,8 @@ repository_lock();
 
   repository_client_remove(name);
 
+  local_client_remove(name);
+
   SERVER_DESC.clients--;
 
 repository_unlock();
@@ -303,8 +311,6 @@ void handle_logout(const void * req) {
   CLIENT_REQUEST * cr = (CLIENT_REQUEST*) req;
 
   logout_user(cr->client_name);
-
-  init_heartbeats();
 }
 
 void handle_status(const void * req) {
@@ -341,53 +347,102 @@ void handle_public_server(const void * req) {
 }
 
 void handle_heartbeat(const void * req) {
-/*  CLIENT_REQUEST* cr = (CLIENT_REQUEST*)req;
+  CLIENT_REQUEST* cr = (CLIENT_REQUEST*)req;
 
   int i;
 
-repository_lock();
+  for (i = 0; i < SERVER_CAPACITY; i++) {
+    if (strcmp(cr->client_name, LOCAL_CLIENTS[i].name)==0) {
+      local_client_set_time(i, TIMEOUT_DELAY);
 
-  for (i = 0; i < GLOBAL_REPO->active_clients; i++) {
-    if (strcmp(cr->client_name, GLOBAL_REPO->clients[i].name)==0) {
-      heartbeat_delay[i] = TIMEOUT;
+      break;
     }
   }
-
-repository_unlock();
-*/}
+}
 
 void check_heartbeats() {
-/*  int i;
+  int i, d;
   STATUS_RESPONSE res;
   res.type = HEARTBEAT;
   res.status = SERVER_DESC.client_msgid;
-repository_lock();
 
-  for (i = 0; i < GLOBAL_REPO->active_clients; i++) {
-    if (GLOBAL_REPO->clients[i].server_id == SERVER_DESC.server_msgid) {
-      if ((--heartbeat_delay[i]) == 0) {
-        logout_user(GLOBAL_REPO->clients[i].name);
-      } else {
-        msgsnd(GLOBAL_REPO->clients[i].)
-      }
+  for (i = 0; i < SERVER_CAPACITY; i++) {
+    d = local_client_tick_time(i);
+
+    if (d <= 0) {
+      logout_user(LOCAL_CLIENTS[i].name);
+    } else
+    if (d == TIMEOUT) {
+      msgsnd(LOCAL_CLIENTS[i].client_msgid, &res, sizeof(res)-sizeof(long), 0);
     }
   }
+}
 
-repository_unlock();
-*/}
+//CLIENT_REL LOCAL_CLIENTS[SERVER_CAPACITY];
+void init_local_clients() {
+  int i;
+  for (i = 0; i < SERVER_CAPACITY; i++) {
+    LOCAL_CLIENTS[i].timeout = INT_MAX;
+    strcpy(LOCAL_CLIENTS[i].room, "");
+    strcpy(LOCAL_CLIENTS[i].name, "");
+  }
+}
 
-void init_heartbeats() {
-/*repository_lock();
 
+void local_client_add(CLIENT desc, int msgid) {
   int i;
 
-  for (i = 0; i < MAX_CLIENTS; i++) {
-    if (i < GLOBAL_REPO->active_clients) {
-      heartbeat_delay[i] = TIMEOUT;
-    } else {
-      heartbeat_delay[i] = INT_MAX;
+  printf("dodaje klienta\n");
+  for (i = 0; i < SERVER_CAPACITY; i++) {
+    if (LOCAL_CLIENTS[i].timeout == INT_MAX) {
+      LOCAL_CLIENTS[i].timeout = TIMEOUT_DELAY;
+      LOCAL_CLIENTS[i].client_msgid = msgid;
+      strcpy(LOCAL_CLIENTS[i].room, desc.room);
+      strcpy(LOCAL_CLIENTS[i].name, desc.name);
+
+      break;
     }
   }
+}
 
-repository_unlock();
-*/}
+void local_client_remove(char * name) {
+  int i;
+
+  printf("usuwam klienta\n");
+  for (i = 0; i < SERVER_CAPACITY; i++) {
+    if (strcmp(LOCAL_CLIENTS[i].name, name) == 0) {
+      LOCAL_CLIENTS[i].timeout = INT_MAX;
+      strcpy(LOCAL_CLIENTS[i].room, "");
+      strcpy(LOCAL_CLIENTS[i].name, "");
+
+      break;
+    }
+  }
+}
+
+void local_client_set_time(int i, int t) {
+  LOCAL_CLIENTS[i].timeout = t;
+  printf("ustawiam czas\n");
+}
+
+int local_client_tick_time(int i) {
+  if (LOCAL_CLIENTS[i].timeout == INT_MAX)
+    return INT_MAX;
+  else {
+    printf("tick!\n");
+    return --LOCAL_CLIENTS[i].timeout;
+  }
+}
+
+void local_client_room_change(char * name, char * room) {
+
+  printf("klient zmienia pokoj");
+  int i;
+  for (i = 0; i < SERVER_CAPACITY; i++) {
+    if (strcmp(LOCAL_CLIENTS[i].name, name) == 0) {
+      strcpy(LOCAL_CLIENTS[i].room, room);
+
+      break;
+    }
+  }
+}

@@ -36,6 +36,7 @@
 #define MAX_MSG_SIZE 1024
 
 #define TIMEOUT 5
+#define TIMEOUT_DELAY 10
 
 #define LOG_FILE "/tmp/czat.log"
 
@@ -56,6 +57,7 @@ typedef struct CLIENT_REL {
   char name[MAX_NAME_SIZE];
   int timeout;
   char room[MAX_NAME_SIZE];
+  int client_msgid;
 } CLIENT_REL;
 
 typedef struct CLIENT {
