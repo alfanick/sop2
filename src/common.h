@@ -142,26 +142,38 @@ int REPO_SEMAPHORE_ID;
 int LOG_SEMAPHORE_ID;
 int REPO_SHM_ID;
 int SHARED_QUEUE_ID;
+
+// Wspolne repozytorium
 REPO * GLOBAL_REPO;
 
+// Utworzenie podstawowych IPC
 void init();
+
+// Utworzenie repozytorium
 void init_repository();
 
+// Porzadkowanie
 void cleanup();
 
+// Obsluga semaforow
 void semaphore_set(int i, int v);
 void semaphore_up(int i);
 void semaphore_down(int i);
 
+// Zapisywanie do logu
 void log_write(const char* data, ...);
 
+// Blokada repozytorium
 void repository_lock();
 void repository_unlock();
 
+// Sortowanie list
 void repository_sort_servers();
 void repository_sort_rooms();
 void repository_sort_clients();
 
+
+// Dodawanie list
 void repository_server_add(SERVER desc);
 void repository_server_remove(int id);
 

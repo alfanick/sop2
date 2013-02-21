@@ -1,0 +1,27 @@
+Komunikator w IPC
+======
+
+Autor: Amadeusz Juskowiak <amadeusz@me.com>, Politechnika Poznańska, 106453, I2.1
+
+1. Makefile
+  - make server/client/all - odpowiednio buduje binarki serwera, klienta bądź obie
+  - make clean - usuwa wspólne IPC z systemu
+
+2. Serwer - uruchomić, log w /tmp/czat.log
+  - serwer jednoprocesowy
+  - obsługa komunikatów przy pomocy asynchronicznych komunikatów
+  - współpraca z wieloma serwerami i użytkownikami
+  - sprawdzanie klientów heartbeatami oraz serwerów odpowiednimi statusami
+
+3. Klient - uruchomić, podać nazwę użytkownika, serwer dobiera się automatycznie (wybierany jest najmniej obciążony), chyba, że nazwa jest zajęta, bądź serwer jest pełny
+  - dwa procesy - proces wypisywania na ekran (i odbioru komunikatów), proces odczytujący (i wysyłający komunikaty do serwera)
+  - współpraca z jednym serwerem (serwer rozsyła wiadomości dalej)
+  - dostępne komendy
+    - /rooms - wypisuje pokoje
+    - /users - wypisuje uzytkownikow
+    - /join POKOJ - wchodzi na dany POKOJ
+    - /msg UZYTKOWNIK WIADOMOSC - wysyla priva do UZYTKOWNIKA
+    - /quit - wylogowanie i wylaczenie
+    - zwykla wiadomosc - napisanie wiadomosci i wyslanie do aktualnego kanalu
+
+4. W przypadku problemow z kompatybilnoscia, nalezy sprawdzic zawartosc stalych w common.h
