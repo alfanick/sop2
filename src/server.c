@@ -291,6 +291,8 @@ repository_lock();
 
   repository_client_remove(name);
 
+  SERVER_DESC.clients--;
+
 repository_unlock();
 
   log_write("LOGGED_OUT@%d: %s\n", SERVER_DESC.server_msgid, name);

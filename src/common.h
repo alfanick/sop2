@@ -52,6 +52,12 @@ typedef enum MSG_TYPE {
   PUBLIC
 } MSG_TYPE;
 
+typedef struct CLIENT_REL {
+  char name[MAX_NAME_SIZE];
+  int timeout;
+  char room[MAX_NAME_SIZE];
+} CLIENT_REL;
+
 typedef struct CLIENT {
   char name[MAX_NAME_SIZE];
   int server_id;
