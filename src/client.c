@@ -19,6 +19,7 @@ void send_request(int queue, MSG_TYPE type);
 int send_request_with_status(int queue, MSG_TYPE type);
 
 void handle_heartbeat(const void *);
+void handle_message(const void *);
 
 CLIENT CLIENT_DESC;
 SERVER_LIST_RESPONSE SERVERS;
@@ -52,11 +53,11 @@ int main(int argc, char* argv[]) {
 
 void output_loop() {
   while (OUTPUT_ALIVE) {
-    sleep(1);
+    usleep(100);
 
     receive_and_handle(CLIENT_QUEUE, HEARTBEAT, handle_heartbeat);
-
-    //printf("output1\n");
+    receive_and_handle(CLIENT_QUEUE, PRIVATE, handle_message);
+    receive_and_handle(CLIENT_QUEUE, PUBLIC, handle_message);
   }
 
 }
@@ -64,9 +65,24 @@ void output_loop() {
 void handle_heartbeat(const void * req) {
   STATUS_RESPONSE * res = (STATUS_RESPONSE*) req;
 
-  printf("pingpong!\n");
   if (res->status == CLIENT_DESC.server_id)
     send_request(res->status, HEARTBEAT);
+}
+
+void handle_message(const void * req) {
+  TEXT_MESSAGE *tm = (TEXT_MESSAGE*)req;
+
+  if (strlen(tm->text) == 0) {
+    return;
+  }
+
+  struct tm *local = localtime(& tm->time);
+
+  if (tm->type == PRIVATE) {
+    printf("!!! PM ");
+  }
+
+  printf("%s %s\t%s\n", tm->from_name, asctime(local), tm->text);
 }
 
 void input_loop() {
@@ -77,6 +93,10 @@ void input_loop() {
 
   while (1) {
     getline(&line, &size, stdin);
+
+    if (strlen(line) <= 1) {
+      continue;
+    }
 
     parse_line(line, &cmd, &argument);
 
@@ -90,6 +110,7 @@ void input_loop() {
       msgsnd(CLIENT_DESC.server_id, &req, sizeof(req)-sizeof(long), 0);
 
       if (await_status(STATUS) == 202) {
+        strcpy(CLIENT_DESC.room, argument);
         printf("Room changed to '%s'\n", argument);
       }
 
@@ -111,7 +132,6 @@ void input_loop() {
 
     } else
     if (cmd == CLIENT_LIST) {
-
       send_request(CLIENT_DESC.server_id, CLIENT_LIST);
 
       CLIENT_LIST_RESPONSE res;
@@ -125,9 +145,33 @@ void input_loop() {
 
     } else
     if (cmd == PUBLIC) {
+      TEXT_MESSAGE tm;
+      tm.type = PUBLIC;
+      tm.from_id = CLIENT_QUEUE;
+      strcpy(tm.from_name, CLIENT_DESC.name);
+      strcpy(tm.to, CLIENT_DESC.room);
+      tm.time = time(NULL);
+      strcpy(tm.text, argument);
 
+      msgsnd(CLIENT_DESC.server_id, &tm, sizeof(tm) - sizeof(long), 0);
     } else
     if (cmd == PRIVATE) {
+      char* content = strchr(argument, ' ');
+      if (content != NULL && strlen(argument) - strlen(content) > 0) {
+        char* username = strndup(argument, strlen(argument) - strlen(content));
+
+        TEXT_MESSAGE tm;
+        tm.type = PRIVATE;
+        tm.from_id = CLIENT_QUEUE;
+        strcpy(tm.from_name, CLIENT_DESC.name);
+        strcpy(tm.to, username);
+        tm.time = time(NULL);
+        strncpy(tm.text, content, strlen(content) - 1);
+
+        msgsnd(CLIENT_DESC.server_id, &tm, sizeof(tm)-sizeof(long), 0);
+      } else {
+        printf("!!! Two arguments required - username and message!\n");
+      }
 
     } else
     if (cmd == LOGOUT) {
@@ -148,6 +192,9 @@ void input_loop() {
 void parse_line(char * line, MSG_TYPE * cmd, char ** argument) {
   *cmd = HEARTBEAT;
 
+  if (strlen(line) <= 1) {
+    return;
+  }
   if (line[0] == '/') {
     // join, quit, priv, list
     if (strstr(line, "/join") == line) {
@@ -266,8 +313,6 @@ void init_client() {
 }
 
 void cleanup_client() {
-  printf("cleaning up...\n");
-
   send_request(CLIENT_DESC.server_id, LOGOUT);
 
   msgctl(CLIENT_QUEUE, IPC_RMID, 0);

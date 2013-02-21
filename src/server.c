@@ -72,11 +72,11 @@ void loop() {
     receive_and_handle(SERVER_DESC.client_msgid,  CLIENT_LIST,  handle_client_list);
     receive_and_handle(SERVER_DESC.client_msgid,  LOGIN,        handle_login);
     receive_and_handle(SERVER_DESC.client_msgid,  LOGOUT,       handle_logout);
-    receive_and_handle(SERVER_DESC.client_msgid,  STATUS,       handle_status);
     receive_and_handle(SERVER_DESC.client_msgid,  CHANGE_ROOM,  handle_change_room);
     receive_and_handle(SERVER_DESC.client_msgid,  PRIVATE,      handle_private);
     receive_and_handle(SERVER_DESC.client_msgid,  PUBLIC,       handle_public);
 
+    receive_and_handle(SERVER_DESC.server_msgid,  STATUS,       handle_status);
     receive_and_handle(SERVER_DESC.server_msgid,  PRIVATE,      handle_private_server);
     receive_and_handle(SERVER_DESC.server_msgid,  PUBLIC,       handle_public_server);
 
@@ -84,7 +84,6 @@ void loop() {
 
     if (time(NULL)-start > 1) {
       start = time(NULL);
-      printf("sekunda\n");
 
       check_heartbeats();
     }
@@ -140,8 +139,6 @@ void change_room(char* name, char* room) {
 
       strcpy(GLOBAL_REPO->clients[i].room, room);
 
-      printf("Przechodze z '%s' do '%s'\n", desc.name, room);
-
       break;
     }
   }
@@ -151,21 +148,16 @@ void change_room(char* name, char* room) {
       GLOBAL_REPO->rooms[i].clients--;
       if (GLOBAL_REPO->rooms[i].clients == 0) {
         desc.clients = -1;
-
-        printf("Zostawiam pusty pokoj\n");
       }
     } else
     if (strcmp(GLOBAL_REPO->rooms[i].name, room) == 0) {
       GLOBAL_REPO->rooms[i].clients++;
       room_exist = 1;
-
-      printf("Dolaczam do istniejacego\n");
     }
   }
 
   if (desc.clients == -1) {
     repository_room_remove(desc.name);
-    printf("Usuwam stary pokoj\n");
   }
 
   if (room_exist == 0) {
@@ -173,9 +165,9 @@ void change_room(char* name, char* room) {
     desc.clients = 1;
 
     repository_room_add(desc);
-
-    printf("Tworze nowy pokoj\n");
   }
+
+  local_client_room_change(name, room);
 }
 
 void response_status(int queue, int status) {
@@ -190,7 +182,6 @@ void response_status(int queue, int status) {
 void handle_server_list(const void * req) {
   SERVER_LIST_REQUEST * slr = (SERVER_LIST_REQUEST*) req;
 
-  printf("Got request!\n");
   int i;
 
 repository_lock();
@@ -276,6 +267,13 @@ repository_lock();
 
     SERVER_DESC.clients++;
 
+    for (i = 0; i < GLOBAL_REPO->active_servers; i++) {
+      if (GLOBAL_REPO->servers[i].server_msgid == SERVER_DESC.server_msgid) {
+        GLOBAL_REPO->servers[i].clients++;
+        break;
+      }
+    }
+
     change_room(desc.name, "");
 
     response_status(cr->client_msgid, 201);
@@ -288,7 +286,8 @@ repository_unlock();
 }
 
 void logout_user(char * name) {
-
+  char *lname = strdup(name);
+  int i;
 repository_lock();
 
   change_room(name, "");
@@ -299,11 +298,19 @@ repository_lock();
 
   local_client_remove(name);
 
+  for (i = 0; i < GLOBAL_REPO->active_servers; i++) {
+    if (GLOBAL_REPO->servers[i].server_msgid == SERVER_DESC.server_msgid) {
+      GLOBAL_REPO->servers[i].clients--;
+      break;
+    }
+  }
+
+
   SERVER_DESC.clients--;
 
 repository_unlock();
 
-  log_write("LOGGED_OUT@%d: %s\n", SERVER_DESC.server_msgid, name);
+  log_write("LOGGED_OUT@%d: %s\n", SERVER_DESC.server_msgid, lname);
 
 }
 
@@ -330,20 +337,123 @@ repository_unlock();
 
 }
 
-void handle_private(const void * req) {
+int await_status(MSG_TYPE type, int server_id) {
+  STATUS_RESPONSE res;
 
+  time_t start_time = time(0);
+  while (1) {
+    if (msgrcv(SERVER_DESC.server_msgid, &res, sizeof(res) - sizeof(long), type, IPC_NOWAIT) != -1) {
+     printf("Zyje!\n");
+      break;
+
+    }
+
+    if (time(0)-start_time > TIMEOUT) {
+      printf("!!! Lost connection with server! Closing...\n");
+
+      repository_server_remove(server_id);
+
+      log_write("KILLED_ZOMBIE:%d", server_id);
+    }
+  }
+
+  return res.status;
+}
+
+void local_send_msg(TEXT_MESSAGE *tm) {
+  int i;
+
+  tm->from_id = 0;
+
+  if (tm->type == PUBLIC) {
+    char room[MAX_NAME_SIZE];
+
+repository_lock();
+
+    for (i = 0; i < GLOBAL_REPO->active_clients; i++) {
+      if (strcmp(GLOBAL_REPO->clients[i].name, tm->from_name) == 0) {
+        strcpy(room, GLOBAL_REPO->clients[i].room);
+        break;
+      }
+    }
+
+repository_unlock();
+
+    for (i = 0; i < SERVER_CAPACITY; i++) {
+      if (strcmp(LOCAL_CLIENTS[i].room, room) == 0 && LOCAL_CLIENTS[i].timeout != INT_MAX) {
+        msgsnd(LOCAL_CLIENTS[i].client_msgid, tm, sizeof(*tm)-sizeof(long), 0);
+      }
+    }
+  } else {
+    for (i = 0; i < SERVER_CAPACITY; i++) {
+      if (strcmp(LOCAL_CLIENTS[i].name, tm->to) == 0) {
+        msgsnd(LOCAL_CLIENTS[i].client_msgid, tm, sizeof(*tm)-sizeof(long), 0);
+        break;
+      }
+    }
+  }
+
+}
+
+void handle_private(const void * req) {
+  int i;
+
+  TEXT_MESSAGE *tm = (TEXT_MESSAGE*)req;
+
+repository_lock();
+
+  for (i = 0; i < GLOBAL_REPO->active_clients; i++) {
+    if (strcmp(GLOBAL_REPO->clients[i].name, tm->to) == 0) {
+      if (GLOBAL_REPO->clients[i].server_id == SERVER_DESC.server_msgid) {
+        local_send_msg(tm);
+      } else {
+        tm->from_id = SERVER_DESC.server_msgid;
+        msgsnd(GLOBAL_REPO->clients[i].server_id, tm, sizeof(*tm)-sizeof(long), 0);
+        await_status(STATUS, GLOBAL_REPO->servers[i].server_msgid);
+      }
+
+      break;
+    }
+  }
+
+repository_unlock();
 }
 
 void handle_public(const void * req) {
+  int i;
 
+  TEXT_MESSAGE *tm = (TEXT_MESSAGE*)req;
+
+  local_send_msg(tm);
+
+  tm->from_id = SERVER_DESC.server_msgid;
+
+repository_lock();
+
+  for (i = 0; i < GLOBAL_REPO->active_servers; i++) {
+    if (GLOBAL_REPO->servers[i].server_msgid != SERVER_DESC.server_msgid) {
+      msgsnd(GLOBAL_REPO->servers[i].server_msgid, tm, sizeof(*tm)-sizeof(long), 0);
+      await_status(STATUS, GLOBAL_REPO->servers[i].server_msgid);
+    }
+  }
+
+repository_unlock();
 }
 
 void handle_private_server(const void * req) {
+  TEXT_MESSAGE *tm = (TEXT_MESSAGE*)req;
 
+  response_status(tm->from_id, SERVER_DESC.server_msgid);
+
+  local_send_msg(tm);
 }
 
 void handle_public_server(const void * req) {
+  TEXT_MESSAGE *tm = (TEXT_MESSAGE*)req;
 
+  response_status(tm->from_id, SERVER_DESC.server_msgid);
+
+  local_send_msg(tm);
 }
 
 void handle_heartbeat(const void * req) {
@@ -370,6 +480,7 @@ void check_heartbeats() {
     d = local_client_tick_time(i);
 
     if (d <= 0) {
+      log_write("DEAD@%d: %s\n", SERVER_DESC.server_msgid, LOCAL_CLIENTS[i].name);
       logout_user(LOCAL_CLIENTS[i].name);
     } else
     if (d == TIMEOUT) {
@@ -391,8 +502,6 @@ void init_local_clients() {
 
 void local_client_add(CLIENT desc, int msgid) {
   int i;
-
-  printf("dodaje klienta\n");
   for (i = 0; i < SERVER_CAPACITY; i++) {
     if (LOCAL_CLIENTS[i].timeout == INT_MAX) {
       LOCAL_CLIENTS[i].timeout = TIMEOUT_DELAY;
@@ -407,8 +516,6 @@ void local_client_add(CLIENT desc, int msgid) {
 
 void local_client_remove(char * name) {
   int i;
-
-  printf("usuwam klienta\n");
   for (i = 0; i < SERVER_CAPACITY; i++) {
     if (strcmp(LOCAL_CLIENTS[i].name, name) == 0) {
       LOCAL_CLIENTS[i].timeout = INT_MAX;
@@ -422,21 +529,17 @@ void local_client_remove(char * name) {
 
 void local_client_set_time(int i, int t) {
   LOCAL_CLIENTS[i].timeout = t;
-  printf("ustawiam czas\n");
 }
 
 int local_client_tick_time(int i) {
   if (LOCAL_CLIENTS[i].timeout == INT_MAX)
     return INT_MAX;
   else {
-    printf("tick!\n");
     return --LOCAL_CLIENTS[i].timeout;
   }
 }
 
 void local_client_room_change(char * name, char * room) {
-
-  printf("klient zmienia pokoj");
   int i;
   for (i = 0; i < SERVER_CAPACITY; i++) {
     if (strcmp(LOCAL_CLIENTS[i].name, name) == 0) {
