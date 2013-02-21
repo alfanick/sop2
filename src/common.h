@@ -3,6 +3,7 @@
 
 #include <time.h>
 
+#include <ctype.h>
 #include <limits.h>
 #include <string.h>
 #include <stdarg.h>
@@ -30,7 +31,7 @@
 
 #define MAX_SERVER_NUM 3
 
-#define SERVER_CAPACITY 20
+#define SERVER_CAPACITY 5
 #define MAX_CLIENTS MAX_SERVER_NUM*SERVER_CAPACITY
 #define MAX_NAME_SIZE 20
 #define MAX_MSG_SIZE 1024

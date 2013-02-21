@@ -1,22 +1,30 @@
 #include "common.h"
 
-SERVER SERVER_DESC;
-
+// Start serwera - utworzenie kolejek, dodanie do repo
 void init_server();
+
+// Koniec serwera - usuniecie kolejek
 void cleanup_server();
 
+// Sprzatanie po zamknieciu
 void quit_handler(int i);
 
+// Obsluga asynchroniczna (IPC_NOWAIT) wiadomosci danego typu z danej kolejki przed dany handler
 void receive_and_handle(int queue, MSG_TYPE type, void (*handler) (const void *));
 
+// Glowna petla - obsluguje wszystkie komunikaty przy pomocy receive_and_handle
 void loop();
 
+// Zmiana pokoju
 void change_room(char* name, char* room);
 
+// Wylogowanie uzytkownika
 void logout_user(char* name);
 
+// Wyslanie STATUS na dana kolejke
 void response_status(int queue, int status);
 
+// Obsluga poszczegolnych zadan
 void handle_server_list(const void *);
 void handle_room_list(const void *);
 void handle_client_list(const void *);
@@ -29,17 +37,28 @@ void handle_public(const void *);
 void handle_private_server(const void *);
 void handle_public_server(const void *);
 
+// Reakcja na heartbeat
 void handle_heartbeat(const void *);
+
+// Przeliczenie heartbeatow
 void check_heartbeats();
 
+// Dane serwera
+SERVER SERVER_DESC;
 
+// Lokalny cache klientow
 CLIENT_REL LOCAL_CLIENTS[SERVER_CAPACITY];
+
+// Obsluga klientow lokalnych
 void init_local_clients();
+
 void local_client_add(CLIENT desc, int msgid);
 void local_client_remove(char * name);
 void local_client_set_time(int i, int t);
-int local_client_tick_time(int i);
 void local_client_room_change(char * name, char * room);
+
+// Zmniejsze czasu i zwrocenie
+int local_client_tick_time(int i);
 
 int main(int argc, char* argv[]) {
   init();
@@ -242,7 +261,24 @@ void handle_login(const void * req) {
 
 repository_lock();
 
-  if (SERVER_DESC.clients >= SERVER_CAPACITY) {
+  if (strlen(cr->client_name) >= MAX_NAME_SIZE) {
+    response_status(cr->client_msgid, 400);
+
+    ok = 0;
+  }
+
+  if (ok)
+  for (i = 0; i < strlen(cr->client_name); i++) {
+    if (!isprint(cr->client_name[i])) {
+      response_status(cr->client_msgid, 400);
+
+      ok = 0;
+
+      break;
+    }
+  }
+
+  if (ok && SERVER_DESC.clients >= SERVER_CAPACITY) {
     response_status(cr->client_msgid, 503);
 
     ok = 0;

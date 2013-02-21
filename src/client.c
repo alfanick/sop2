@@ -1,29 +1,51 @@
 #include <stdlib.h>
 #include "common.h"
 
+// Start klienta - utworzenie kolejki
 void init_client();
+
+// Koniec klienta - wylogowanie i usunietcie kolejki
 void cleanup_client();
 
+// Dolaczenie do serwera - zalogowanie do serwera o najmniejszej ilosci userow
 int join_server();
 
+// Obsluga polaczen przychodzacych i wypisywanie na ekran
 void output_loop();
+
+// Obsluga petli wejsciowej i wysylanie komunikatow
 void input_loop();
 
+// Zarejestrowanie klienta - prosba o nazwe uzytkownika
 void register_client();
 
+// Przperasnowanie komendy /komenda argument
 void parse_line(char * line, MSG_TYPE * cmd, char ** argument);
 
+// Oczekiwanie przez TIMEOUT czas na status
 int await_status(MSG_TYPE type);
 
+// Wyslanie CLIENT_REQUESTa
 void send_request(int queue, MSG_TYPE type);
+
+// Wyslanie CLIENT_REQUESTa i oczekiwanie na status zwrotny
 int send_request_with_status(int queue, MSG_TYPE type);
 
+// Odpowiedz na heartbeata
 void handle_heartbeat(const void *);
+
+// Wypisanie wiadomosci
 void handle_message(const void *);
 
+// Dane klienta
 CLIENT CLIENT_DESC;
+
+// Lista serwerow
 SERVER_LIST_RESPONSE SERVERS;
+
+// Numer kolejki klienta
 int CLIENT_QUEUE;
+
 int OUTPUT_PID;
 int MAIN_PID;
 
@@ -256,6 +278,11 @@ int join_server() {
         CLIENT_DESC.server_id = min_id;
 
         break;
+
+      case 400:
+        printf("!!! Unallowed characters!\n");
+
+        return -1;
       case 409:
         printf("!!! Username already in system!\n");
 
@@ -324,4 +351,10 @@ void register_client() {
     scanf("%s", CLIENT_DESC.name);
   } while (join_server() == -1);
 
+  printf("Simply type message to send to current channel.\nAvailable commands:\n"
+         "  - /rooms - list rooms\n"
+         "  - /join ROOM_NAME - joins room\n"
+         "  - /users - list users\n"
+         "  - /msg USER MESSAGE - sends private message to user\n"
+         "  - /quit - logout and quit\n\n");
 }
