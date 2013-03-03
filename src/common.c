@@ -215,5 +215,7 @@ void receive_and_handle(int queue, MSG_TYPE type, void (*handler) (const void *)
   if (msgrcv(queue, out, 8192, (long)type, IPC_NOWAIT) != -1) {
     handler(out);
   }
+
+  free(out);
 }
 
